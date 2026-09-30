@@ -7,8 +7,9 @@ It started as a weekend project because most libraries out there are heavy,
 abstracted away, or simply don't cover these markets. The design is
 **inspired by QuantLib** — a well-known, heavily-abstracted C++ reference
 implementation — but stripped down: no heavy abstractions, no ceremony, just
-the essentials. The goal is to ship: a business-day **calendar** engine today,
-with a **curve builder** and a **swap pricer** coming next.
+the essentials. The library provides: a business-day **calendar** engine,
+a **Brazil DI curve builder**, and a **par swap curve bootstrapper**,
+with extended multi-currency curves and swap pricing coming next.
 
 Everything is designed to be easy to read and easy to extend.
 
@@ -28,17 +29,21 @@ Everything is designed to be easy to read and easy to extend.
 ```
 QuantCurve/
 ├── QuantCurve.slnx
-└── QuantCurve/
-    ├── QuantCurve.csproj          # .NET 10 solution project
-    ├── Core/                      # Core, testable logic (no Excel dependency)
-    │   └── Calendar/              # Business-day calendars
-    │       ├── ICountryCalendar.cs
-    │       ├── CalendarType.cs
-    │       ├── CalendarFactory.cs
-    │       ├── ChristianCalendar.cs
-    │       └── BrazilCalendar.cs
-    └── Excel/                     # Thin Excel add-in wrappers
-        └── ExcelCalendar.cs
+├── QuantCurve/
+│   ├── QuantCurve.csproj          # .NET 10 library & Excel add-in project
+│   ├── Core/                      # Core, testable logic (no Excel dependency)
+│   │   ├── Calendar/              # Business-day calendars
+│   │   │   ├── ICountryCalendar.cs
+│   │   │   ├── CalendarType.cs
+│   │   │   ├── CalendarFactory.cs
+│   │   │   ├── ChristianCalendar.cs
+│   │   │   └── BrazilCalendar.cs
+│   │   ├── Curve/                 # Term structure and curve construction
+│   │   │   ├── CurveBrazil.cs
+│   │   │   └── CurvePillar.cs
+│   └── Excel/                     # Thin Excel add-in wrappers
+│       └── ExcelCalendar.cs
+├── QuantCurveTest/                # Integration tests and DI curve validation
 ```
 
 The design follows a simple rule: **Core logic lives in `QuantCurve.Core` and is
@@ -47,64 +52,171 @@ layer is intentionally thin — it only translates Excel arguments and errors.
 
 ---
 
-## What's available now
+## Component status
 
-### Calendars
-
-A business-day calendar engine. Each calendar answers three questions:
-
-| Method | Description |
-| --- | --- |
-| `IsBusinessDay(date)` | Is a given date a business day? |
-| `AddBusinessDays(date, days)` | Return the date `days` business days from `date` (supports negative `days`). |
-| `CountBusinessDays(start, end)` | Count business days strictly between two dates (sign follows direction). |
-
-**Implemented calendars:**
-
-| Calendar | Status |
-| --- | --- |
-| Brazil | Implemented (holidays + Christian-based floating holidays). |
-| Chile | Planned. |
-| Mexico | Planned. |
-
-New countries are added by:
-
-1. Creating a new type that implements `ICountryCalendar`.
-2. Registering an instance in `CalendarFactory`.
-3. Adding the value to `CalendarType`.
+| Module | Component | Status | Description |
+| --- | --- | --- | --- |
+| **Calendar** | Brazil | Implemented | Fixed holidays + Easter-derived floating holidays (Carnival, Good Friday, Corpus Christi). |
+| **Calendar** | Chile & Mexico | Planned | Country holiday schedules. |
+| **Curve** | Brazil DI Curve | Implemented | B3 DI futures (`CurveBrazil`), 252 business days compounding, daily discount factors up to 15 years. |
+| **Excel Add-in**| Calendar UDFs | Implemented | `QCWorkday`, `QCNetworkdays`. |
+| **Excel Add-in**| Curve & Swap UDFs | Planned | Excel UDF wrappers for discount factors and rates. |
 
 ---
 
-## Planned features
+## Modules & Usage
 
-The project is a living side project. The next milestones are:
+### 1. Business Day Calendars (`QuantCurve.Core.Calendar`)
 
-1. **Curve builder** — build/interpolate interest-rate term structures for
-   **Brazil, Chile and Mexico**.
-2. **Swap pricer** — price interest-rate swaps for **Chile and Mexico**,
-   reusing the same calendar engine.
+The calendar module provides business day calculations, holiday adjustments, and network day counting for Latin American financial markets.
+
+Each calendar implements `ICountryCalendar`:
+
+| Method | Description |
+| --- | --- |
+| `IsBusinessDay(date)` | Returns `true` if `date` is a valid business day (not a weekend or holiday). |
+| `AddBusinessDays(date, days)` | Adds (or subtracts) `days` business days to/from `date`. |
+| `CountBusinessDays(start, end)` | Counts business days strictly between `start` and `end` (sign follows chronological order). |
+
+#### Holiday Logic
+- **Fixed Holidays**: New Year's Day, Tiradentes, Labor Day, Independence Day, Our Lady of Aparecida, All Souls, Republic Proclamation, Black Awareness Day, Christmas.
+- **Floating Christian Holidays**: Handled dynamically using `ChristianCalendar.EasterMonday(year)` using the Meeus/Jones/Butcher algorithm to compute Carnival (Monday & Tuesday, $-48$ and $-47$ days), Good Friday ($-2$ days), and Corpus Christi ($+60$ days).
+
+#### Example Usage
+```csharp
+using QuantCurve.Core.Calendar;
+
+var calendar = CalendarFactory.Create(CalendarType.Brazil);
+
+DateTime date = new DateTime(2026, 9, 30);
+bool isBusDay = calendar.IsBusinessDay(date); // true
+DateTime nextBusDay = calendar.AddBusinessDays(date, 5);
+int count = calendar.CountBusinessDays(new DateTime(2026, 1, 1), new DateTime(2026, 12, 31));
+```
+
+---
+
+### 2. Brazil DI Curve Engine (`QuantCurve.Core.Curve`)
+
+The DI curve builder models the Brazilian interbank deposit rate term structure using standard B3 DI futures contracts (e.g. `F27`, `F28`, ..., `F32` corresponding to January maturities).
+
+#### Mathematics & Compounding
+Brazilian fixed-income conventions operate on **252 business days per year** with discrete compounding:
+- **Spot Rate**:
+  $$\text{SpotRate} = \left(\frac{100{,}000}{\text{Price}}\right)^{\frac{252}{\text{DayCount}}} - 1$$
+- **Forward Rate** between contract nodes $i-1$ and $i$:
+  $$\text{ForwardRate} = \left(\frac{\text{Price}_{i-1}}{\text{Price}_i}\right)^{\frac{252}{\text{DayCount}_i - \text{DayCount}_{i-1}}} - 1$$
+- **Discount Factor Schedule**:
+  Computed daily over a 15-year horizon ($252 \times 15 = 3{,}780$ business days) by compounding forward rates:
+  $$\text{DF}_t = \frac{\text{DF}_{t-1}}{(1 + \text{ForwardRate})^{1/252}}$$
+
+#### Linked Pillar Architecture
+`CurvePillar` instances form a doubly linked list (`Before` / `Next`), allowing forward rates and daily discount factor schedules to traverse contract pillars seamlessly.
+
+#### Example Usage
+```csharp
+using QuantCurve.Core.Curve;
+
+var cbz = new CurveBrazil();
+var contracts = new Dictionary<string, double>
+{
+    ["F27"] = 96873.64,
+    ["F28"] = 85386.65,
+    ["F29"] = 75067.80,
+    ["F30"] = 65858.82,
+    ["F31"] = 57725.48,
+    ["F32"] = 50559.37
+};
+
+DateTime curveDate = new DateTime(2026, 9, 30);
+Dictionary<DateTime, CurvePillar> pillars = cbz.Prepare(curveDate, contracts);
+Dictionary<int, double> discountFactors = cbz.Create(pillars);
+```
+
+---
+
+### 3. Swap Bootstrapping & Day Count (`QuantCurve.Core.Swap` & `QuantCurve.Core.DayCount`)
+
+#### Swap Curve Bootstrapper (`SwapBootstrapper`)
+Bootstraps a discount curve from a sequence of par swap rates (ordered by increasing maturity):
+- **Spot Offset**: Spot date = $\text{CurveDate} + 2\text{ calendar days}$.
+- **Coupon Schedule**: Semiannual fixed payments ($k \times 180$ days from spot).
+- **Date Adjustment**: Modified Following / Backward (`BusinessDayConvention.Adjust`) using the specified calendar.
+- **Interpolation**: Log-linear interpolation on discount factors between bootstrapped tenors.
+- **Bootstrap Formula**:
+  $$\text{DF}_n = \frac{1 - S \sum_{j=1}^{n-1} \tau_j \text{DF}_j}{1 + S \tau_n}$$
+  where $S$ is the par swap rate and $\tau$ is the accrual fraction.
+
+#### Day Count Convention (`Act360DayCount`)
+Computes accrual fractions using the ACT/360 convention:
+$$\text{Fraction}(\text{start}, \text{end}) = \frac{\text{Days}(\text{end} - \text{start})}{360.0}$$
+
+#### Business Day Convention (`BusinessDayConvention`)
+Implements Modified Following / Backward (`mFb`):
+1. Returns the date if it is already a business day.
+2. Rolls forward to the next business day.
+3. If a holiday was crossed such that the day before the rolled date is a non-business day, rolls backward.
+
+#### Example Usage
+```csharp
+using QuantCurve.Core.Swap;
+using QuantCurve.Core.DayCount;
+
+var bootstrapper = new SwapBootstrapper();
+var curveDate = new DateTime(2024, 1, 2);
+
+// Bootstrap nodes in increasing tenor order
+var results6M = bootstrapper.Bootstrap(curveDate, tenor: 0.5, rate: 0.10);
+var results1Y = bootstrapper.Bootstrap(curveDate, tenor: 1.0, rate: 0.10);
+```
+
+---
+
+## Testing & Verification
+
+The solution includes dedicated validation and verification applications:
+
+### 1. `QuantCurveTest`
+An end-to-end integration harness testing the Brazil DI curve engine with real contract data.
+```bash
+dotnet run --project QuantCurveTest/QuantCurveTest.csproj
+```
+
+### 2. `TempVerifyApp`
+A verification suite that tests `SwapBootstrapper` against closed-form theoretical discount factors:
+- **Flat term structure**: Validates bootstrapped discount factors against $\text{DF}(T) = e^{-r T}$ with machine precision ($< 10^{-12}$).
+- **Piecewise-flat term structure**: Validates multi-step discount factor curves against exact analytical solutions.
+```bash
+dotnet run --project TempVerifyApp/TempVerifyApp.csproj
+```
 
 ---
 
 ## Using it in Excel
 
-The project builds a 32- and 64-bit Excel add-in. Load the compiled add-in in
-Excel, then use the exposed functions:
+The project builds a 32- and 64-bit Excel add-in via Excel-DNA. Load the compiled XLL add-in in Excel to use the custom worksheet functions:
 
-| Function | Arguments |
-| --- | --- |
-| `QCWorkday` | Start date, number of business days, calendar selector. |
-| `QCNetworkdays` | Start date, end date, calendar selector. |
+| Function | Arguments | Description |
+| --- | --- | --- |
+| `QCWorkday` | `date`, `days`, `calendar` | Returns the date offset by `days` business days. |
+| `QCNetworkdays` | `start_date`, `end_date`, `calendar` | Counts business days between two dates. |
 
-Calendar selector:
-
+#### Calendar Selector
 | Value | Calendar |
 | --- | --- |
 | `0` | Brazil |
-| *(Chile / Mexico)* | Planned. |
+| *(Chile / Mexico)* | Planned |
 
-> Example: `=QCWorkday(A1, 5, 0)` returns the date 5 business days after the
-> date in `A1`, using the Brazil calendar.
+> Example: `=QCWorkday(A1, 5, 0)` returns the date 5 business days after `A1` using the Brazil calendar.
+
+---
+
+## Planned Features & Roadmap
+
+1. **Country Calendars**: Add Chile and Mexico holiday schedules.
+2. **Curve Engines**: Implement Chile ICP and Mexico TIIE term structure construction.
+3. **Swap Pricing Engine**: Implement pricing and risk analytics for cross-currency and interest rate swaps.
+4. **Excel Add-in Expansion**: Expose curve building and swap valuation functions directly as Excel UDFs.
 
 ---
 
@@ -113,6 +225,10 @@ Calendar selector:
 Requires the .NET 10 SDK.
 
 ```bash
+# Build entire solution
+dotnet build QuantCurve.slnx
+
+# Or build the library project directly
 dotnet build QuantCurve/QuantCurve.csproj
 ```
 
@@ -120,6 +236,6 @@ dotnet build QuantCurve/QuantCurve.csproj
 
 ## Conventions
 
-- Core logic is kept free of ExcelDna so it stays unit-testable.
-- New markets follow the `ICountryCalendar` + `CalendarFactory` pattern.
-- Prefer clear, maintainable code over clever implementations.
+- **Clean Core**: Core logic lives in `QuantCurve.Core` free of ExcelDna or external UI dependencies for full unit-testability.
+- **Extensibility**: Calendars implement `ICountryCalendar` and register with `CalendarFactory`.
+- **Clarity over Cleverness**: Prefer explicit, transparent financial math implementations.
