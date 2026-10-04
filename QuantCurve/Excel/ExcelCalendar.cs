@@ -16,7 +16,7 @@ public static class ExcelCalendar
     /// <summary>Excel date serial 0 (empty date cell).</summary>
     public static readonly DateTime ExcelEpoch = new(1899, 12, 30);
 
-    [ExcelFunction(Description = "Workday with QuantCurve calendar")]
+    [ExcelFunction(Description = "Workday with QuantCurve calendar", Category = "QuantCurve")]
     public static object QCWorkday([ExcelArgument("Start date")] DateTime date,
         [ExcelArgument("Number of business days")] int days,
         [ExcelArgument("0 -> Brazil")] int calendar)
@@ -38,7 +38,7 @@ public static class ExcelCalendar
         }
     }
 
-    [ExcelFunction(Description = "Networkdays with QuantCurve calendar")]
+    [ExcelFunction(Description = "Networkdays with QuantCurve calendar", Category = "QuantCurve")]
     public static object QCNetworkdays([ExcelArgument("Start date")] DateTime start_date,
         [ExcelArgument("End date")] DateTime end_date,
         [ExcelArgument("0 -> Brazil")] int calendar)
