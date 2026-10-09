@@ -2,16 +2,16 @@
 
 namespace QuantCurve.Core.Curve;
 
-public class CurveBrazil
+public class Brazil
 {
-    public SortedList<DateTime, CurvePillar> Prepare(DateTime curveDate, Dictionary<string, double> contracts)
+    public SortedList<DateTime, Pillar> Prepare(DateTime curveDate, Dictionary<string, double> contracts)
     {
-        SortedList<DateTime, CurvePillar> pillars = new SortedList<DateTime, CurvePillar>();
+        SortedList<DateTime, Pillar> pillars = new SortedList<DateTime, Pillar>();
         var bz = CalendarFactory.Create(CalendarType.Brazil);
         
         foreach (var contract in contracts)
         {
-            var pillar = new CurvePillar
+            var pillar = new Pillar
             {
                 Price = contract.Value,
                 Maturity = new DateTime(2000 + int.Parse(contract.Key.AsSpan(1, 2)), (int)Enum.Parse<FutureCode>(contract.Key.AsSpan(0, 1)), 1)
@@ -25,7 +25,7 @@ public class CurveBrazil
         return pillars;
     }
     
-    public Dictionary<int, double> Create(SortedList<DateTime, CurvePillar> pillars)
+    public Dictionary<int, double> Create(SortedList<DateTime, Pillar> pillars)
     {
         var pillar = pillars.Values.ElementAt(0);
         pillar.ForwardRate = pillar.SpotRate;

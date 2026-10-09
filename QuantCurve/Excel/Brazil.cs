@@ -46,7 +46,7 @@ public static class Brazil
             if (contractPrices.Count == 0)
                 return ExcelError.ExcelErrorValue;
 
-            var curve = new CurveBrazil();
+            var curve = new Core.Curve.Brazil();
             var pillars = curve.Prepare(date, contractPrices);
             var discountFactors = curve.Create(pillars);
             var result = new object[discountFactors.Count, 2];

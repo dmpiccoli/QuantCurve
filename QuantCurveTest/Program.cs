@@ -20,7 +20,7 @@ class Program
         //
         // b.Prepare(date, tenors);
         
-        var cbz = new CurveBrazil();
+        var cbz = new Brazil();
         Dictionary<string, double> contracts = new Dictionary<string, double>();
         contracts.Add("F27", 96873.64);
         contracts.Add("F28", 85386.65);

@@ -16,7 +16,7 @@ public enum FutureCode
     Z = 12,
 }
 
-public class CurvePillar
+public class Pillar
 {
     public string Tenor { get; set; }
     public DateTime Maturity { get; set; }
