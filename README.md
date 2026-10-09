@@ -39,11 +39,24 @@ QuantCurve/
 │   │   │   ├── ChristianCalendar.cs
 │   │   │   └── BrazilCalendar.cs
 │   │   ├── Curve/                 # Term structure and curve construction
-│   │   │   ├── CurveBrazil.cs
-│   │   │   └── CurvePillar.cs
+│   │   │   ├── Brazil.cs
+│   │   │   ├── Pillar.cs
+│   │   │   └── Bootstraper.cs
+│   │   ├── DayCount/              # Day count conventions
+│   │   │   └── Act360DayCount.cs
+│   │   └── Swap/                  # Swap bootstrapping and conventions
+│   │       ├── BusinessDayConvention.cs
+│   │       └── SwapBootstrapper.cs
 │   └── Excel/                     # Thin Excel add-in wrappers
-│       └── ExcelCalendar.cs
+│       ├── ExcelCalendar.cs
+│       └── Brazil.cs
 ├── QuantCurveTest/                # Integration tests and DI curve validation
+│   ├── Program.cs
+│   ├── QC Test.xlsx               # Sample workbook and validation dataset
+│   └── QuantCurveTest.csproj
+└── TempVerifyApp/                 # Swap bootstrapper theoretical verification
+    ├── Program.cs
+    └── TempVerifyApp.csproj
 ```
 
 The design follows a simple rule: **Core logic lives in `QuantCurve.Core` and is
@@ -58,9 +71,10 @@ layer is intentionally thin — it only translates Excel arguments and errors.
 | --- | --- | --- | --- |
 | **Calendar** | Brazil | Implemented | Fixed holidays + Easter-derived floating holidays (Carnival, Good Friday, Corpus Christi). |
 | **Calendar** | Chile & Mexico | Planned | Country holiday schedules. |
-| **Curve** | Brazil DI Curve | Implemented | B3 DI futures (`CurveBrazil`), 252 business days compounding, daily discount factors up to 15 years. |
-| **Excel Add-in**| Calendar UDFs | Implemented | `QCWorkday`, `QCNetworkdays`. |
-| **Excel Add-in**| Curve & Swap UDFs | Planned | Excel UDF wrappers for discount factors and rates. |
+| **Curve** | Brazil DI Curve | Implemented | B3 DI futures (`Brazil`), `FutureCode` parsing, 252 business days compounding, sorted pillar schedule up to 15 years. |
+| **Excel Add-in** | Calendar UDFs | Implemented | `QCWorkday`, `QCNetworkdays` (Category: QuantCurve). |
+| **Excel Add-in** | Brazil Curve UDF | Implemented | `QCBrazilFixedCurve` (Category: QuantCurve, handles 2D ranges, strips DI1 prefixes). |
+| **Excel Add-in** | Swap UDFs | Planned | Excel UDF wrappers for swap bootstrapping and valuation. |
 
 ---
 
@@ -80,7 +94,7 @@ Each calendar implements `ICountryCalendar`:
 
 #### Holiday Logic
 - **Fixed Holidays**: New Year's Day, Tiradentes, Labor Day, Independence Day, Our Lady of Aparecida, All Souls, Republic Proclamation, Black Awareness Day, Christmas.
-- **Floating Christian Holidays**: Handled dynamically using `ChristianCalendar.EasterMonday(year)` using the Meeus/Jones/Butcher algorithm to compute Carnival (Monday & Tuesday, $-48$ and $-47$ days), Good Friday ($-2$ days), and Corpus Christi ($+60$ days).
+- **Floating Christian Holidays**: Handled dynamically using `ChristianCalendar.EasterMonday(year)` (a protected helper inherited by country calendar implementations such as `BrazilCalendar`) using the Meeus/Jones/Butcher algorithm to compute Carnival (Monday & Tuesday, $-48$ and $-47$ days), Good Friday ($-2$ days), and Corpus Christi ($+60$ days).
 
 #### Example Usage
 ```csharp
@@ -98,7 +112,16 @@ int count = calendar.CountBusinessDays(new DateTime(2026, 1, 1), new DateTime(20
 
 ### 2. Brazil DI Curve Engine (`QuantCurve.Core.Curve`)
 
-The DI curve builder models the Brazilian interbank deposit rate term structure using standard B3 DI futures contracts (e.g. `F27`, `F28`, ..., `F32` corresponding to January maturities).
+The DI curve builder (`Brazil`) models the Brazilian interbank deposit rate term structure using standard B3 DI futures contracts (e.g. `F27`, `F28`, ..., `F32` corresponding to January maturities).
+
+#### Month Codes (`FutureCode`)
+Maturity month codes follow the standard B3 futures conventions mapped via the `FutureCode` enum:
+
+| Code | Month | Code | Month | Code | Month | Code | Month |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `F` | January (1) | `J` | April (4) | `N` | July (7) | `V` | October (10) |
+| `G` | February (2) | `K` | May (5) | `Q` | August (8) | `X` | November (11) |
+| `H` | March (3) | `M` | June (6) | `U` | September (9) | `Z` | December (12) |
 
 #### Mathematics & Compounding
 Brazilian fixed-income conventions operate on **252 business days per year** with discrete compounding:
@@ -110,30 +133,10 @@ Brazilian fixed-income conventions operate on **252 business days per year** wit
   Computed daily over a 15-year horizon ($252 \times 15 = 3{,}780$ business days) by compounding forward rates:
   $$\text{DF}_t = \frac{\text{DF}_{t-1}}{(1 + \text{ForwardRate})^{1/252}}$$
 
-#### Linked Pillar Architecture
-`CurvePillar` instances form a doubly linked list (`Before` / `Next`), allowing forward rates and daily discount factor schedules to traverse contract pillars seamlessly.
+#### Sorted Pillar Architecture
+Contract nodes are represented by `Pillar` models containing maturity, business day count, spot rate, forward rate, and price. 
 
-#### Example Usage
-```csharp
-using QuantCurve.Core.Curve;
-
-var cbz = new CurveBrazil();
-var contracts = new Dictionary<string, double>
-{
-    ["F27"] = 96873.64,
-    ["F28"] = 85386.65,
-    ["F29"] = 75067.80,
-    ["F30"] = 65858.82,
-    ["F31"] = 57725.48,
-    ["F32"] = 50559.37
-};
-
-DateTime curveDate = new DateTime(2026, 9, 30);
-Dictionary<DateTime, CurvePillar> pillars = cbz.Prepare(curveDate, contracts);
-Dictionary<int, double> discountFactors = cbz.Create(pillars);
-```
-
----
+`Brazil.Prepare` processes input contract dictionaries provided in any arbitrary order and returns a `SortedList<DateTime, Pillar>` chronologically sorted by maturity. `Brazil.Create` then iterates through the sorted pillars to compute forward rates between consecutive nodes and generates the complete daily discount factor schedule.
 
 ### 3. Swap Bootstrapping & Day Count (`QuantCurve.Core.Swap` & `QuantCurve.Core.DayCount`)
 
@@ -157,27 +160,13 @@ Implements Modified Following / Backward (`mFb`):
 2. Rolls forward to the next business day.
 3. If a holiday was crossed such that the day before the rolled date is a non-business day, rolls backward.
 
-#### Example Usage
-```csharp
-using QuantCurve.Core.Swap;
-using QuantCurve.Core.DayCount;
-
-var bootstrapper = new SwapBootstrapper();
-var curveDate = new DateTime(2024, 1, 2);
-
-// Bootstrap nodes in increasing tenor order
-var results6M = bootstrapper.Bootstrap(curveDate, tenor: 0.5, rate: 0.10);
-var results1Y = bootstrapper.Bootstrap(curveDate, tenor: 1.0, rate: 0.10);
-```
-
----
-
 ## Testing & Verification
 
 The solution includes dedicated validation and verification applications:
 
 ### 1. `QuantCurveTest`
 An end-to-end integration harness testing the Brazil DI curve engine with real contract data.
+- Includes `QC Test.xlsx` containing sample B3 DI contract data, calculated rates, and reference curve validation.
 ```bash
 dotnet run --project QuantCurveTest/QuantCurveTest.csproj
 ```
@@ -194,12 +183,13 @@ dotnet run --project TempVerifyApp/TempVerifyApp.csproj
 
 ## Using it in Excel
 
-The project builds a 32- and 64-bit Excel add-in via Excel-DNA. Load the compiled XLL add-in in Excel to use the custom worksheet functions:
+The project builds a 32- and 64-bit Excel add-in via Excel-DNA. Load the compiled XLL add-in in Excel to use the custom worksheet functions (registered under category `"QuantCurve"`):
 
 | Function | Arguments | Description |
 | --- | --- | --- |
 | `QCWorkday` | `date`, `days`, `calendar` | Returns the date offset by `days` business days. |
 | `QCNetworkdays` | `start_date`, `end_date`, `calendar` | Counts business days between two dates. |
+| `QCBrazilFixedCurve` | `date`, `contracts` | Builds the Brazil DI curve discount factors. Accepts contract codes with or without `DI1` prefix (e.g. `DI1F27` or `F27`). Handles 2-column ranges with or without header rows and returns a dynamic 2D array of `[DayIndex, DiscountFactor]`. |
 
 #### Calendar Selector
 | Value | Calendar |
@@ -207,7 +197,11 @@ The project builds a 32- and 64-bit Excel add-in via Excel-DNA. Load the compile
 | `0` | Brazil |
 | *(Chile / Mexico)* | Planned |
 
-> Example: `=QCWorkday(A1, 5, 0)` returns the date 5 business days after `A1` using the Brazil calendar.
+#### Examples
+- **Business Day Calculation**:
+  `=QCWorkday(A1, 5, 0)` returns the date 5 business days after `A1` using the Brazil calendar.
+- **Brazil Fixed DI Curve**:
+  `=QCBrazilFixedCurve(A1, B2:C10)` where `A1` is the curve date and `B2:C10` contains the contract codes and settlement prices.
 
 ---
 
@@ -216,7 +210,7 @@ The project builds a 32- and 64-bit Excel add-in via Excel-DNA. Load the compile
 1. **Country Calendars**: Add Chile and Mexico holiday schedules.
 2. **Curve Engines**: Implement Chile ICP and Mexico TIIE term structure construction.
 3. **Swap Pricing Engine**: Implement pricing and risk analytics for cross-currency and interest rate swaps.
-4. **Excel Add-in Expansion**: Expose curve building and swap valuation functions directly as Excel UDFs.
+4. **Excel Add-in Expansion**: Expose swap bootstrapping and valuation functions directly as Excel UDFs.
 
 ---
 
