@@ -72,8 +72,10 @@ layer is intentionally thin — it only translates Excel arguments and errors.
 | **Calendar** | Brazil | Implemented | Fixed holidays + Easter-derived floating holidays (Carnival, Good Friday, Corpus Christi). |
 | **Calendar** | Chile & Mexico | Planned | Country holiday schedules. |
 | **Curve** | Brazil DI Curve | Implemented | B3 DI futures (`Brazil`), `FutureCode` parsing, 252 business days compounding, sorted pillar schedule up to 15 years. |
+| **Curve** | Brazil DI Curve (COPOM Dates) | Planned | DI curve construction parameterized by COPOM meeting dates to model step-wise monetary policy rate expectations between meetings. |
 | **Excel Add-in** | Calendar UDFs | Implemented | `QCWorkday`, `QCNetworkdays` (Category: QuantCurve). |
 | **Excel Add-in** | Brazil Curve UDF | Implemented | `QCBrazilFixedCurve` (Category: QuantCurve, handles 2D ranges, strips DI1 prefixes). |
+| **Excel Add-in** | Brazil COPOM Curve UDF | Planned | Excel UDF wrapper accepting COPOM meeting dates and contract ranges. |
 | **Excel Add-in** | Swap UDFs | Planned | Excel UDF wrappers for swap bootstrapping and valuation. |
 
 ---
@@ -96,19 +98,6 @@ Each calendar implements `ICountryCalendar`:
 - **Fixed Holidays**: New Year's Day, Tiradentes, Labor Day, Independence Day, Our Lady of Aparecida, All Souls, Republic Proclamation, Black Awareness Day, Christmas.
 - **Floating Christian Holidays**: Handled dynamically using `ChristianCalendar.EasterMonday(year)` (a protected helper inherited by country calendar implementations such as `BrazilCalendar`) using the Meeus/Jones/Butcher algorithm to compute Carnival (Monday & Tuesday, $-48$ and $-47$ days), Good Friday ($-2$ days), and Corpus Christi ($+60$ days).
 
-#### Example Usage
-```csharp
-using QuantCurve.Core.Calendar;
-
-var calendar = CalendarFactory.Create(CalendarType.Brazil);
-
-DateTime date = new DateTime(2026, 9, 30);
-bool isBusDay = calendar.IsBusinessDay(date); // true
-DateTime nextBusDay = calendar.AddBusinessDays(date, 5);
-int count = calendar.CountBusinessDays(new DateTime(2026, 1, 1), new DateTime(2026, 12, 31));
-```
-
----
 
 ### 2. Brazil DI Curve Engine (`QuantCurve.Core.Curve`)
 
@@ -137,6 +126,11 @@ Brazilian fixed-income conventions operate on **252 business days per year** wit
 Contract nodes are represented by `Pillar` models containing maturity, business day count, spot rate, forward rate, and price. 
 
 `Brazil.Prepare` processes input contract dictionaries provided in any arbitrary order and returns a `SortedList<DateTime, Pillar>` chronologically sorted by maturity. `Brazil.Create` then iterates through the sorted pillars to compute forward rates between consecutive nodes and generates the complete daily discount factor schedule.
+
+#### Planned: COPOM Date-Driven Curve Construction
+Standard flat forward rate interpolation assumes constant rates between contract maturity dates. In the Brazilian market, short-term monetary policy rates (Selic target) change strictly on COPOM (Monetary Policy Committee) meeting effective dates. 
+
+The planned COPOM curve engine will accept a list of COPOM meeting dates as a parameter to construct piece-wise constant forward rate step functions between monetary policy decision cycles, matching market pricing across overlapping DI futures contracts.
 
 ### 3. Swap Bootstrapping & Day Count (`QuantCurve.Core.Swap` & `QuantCurve.Core.DayCount`)
 
@@ -197,20 +191,15 @@ The project builds a 32- and 64-bit Excel add-in via Excel-DNA. Load the compile
 | `0` | Brazil |
 | *(Chile / Mexico)* | Planned |
 
-#### Examples
-- **Business Day Calculation**:
-  `=QCWorkday(A1, 5, 0)` returns the date 5 business days after `A1` using the Brazil calendar.
-- **Brazil Fixed DI Curve**:
-  `=QCBrazilFixedCurve(A1, B2:C10)` where `A1` is the curve date and `B2:C10` contains the contract codes and settlement prices.
-
 ---
 
 ## Planned Features & Roadmap
 
-1. **Country Calendars**: Add Chile and Mexico holiday schedules.
-2. **Curve Engines**: Implement Chile ICP and Mexico TIIE term structure construction.
-3. **Swap Pricing Engine**: Implement pricing and risk analytics for cross-currency and interest rate swaps.
-4. **Excel Add-in Expansion**: Expose swap bootstrapping and valuation functions directly as Excel UDFs.
+1. **Brazil DI Curve with COPOM Dates**: Construct term structures parameterized by COPOM meeting schedules to resolve short-end meeting step rates.
+2. **Country Calendars**: Add Chile and Mexico holiday schedules.
+3. **Curve Engines**: Implement Chile ICP and Mexico TIIE term structure construction.
+4. **Swap Pricing Engine**: Implement pricing and risk analytics for cross-currency and interest rate swaps.
+5. **Excel Add-in Expansion**: Expose COPOM-adjusted curve and swap bootstrapping functions directly as Excel UDFs.
 
 ---
 
