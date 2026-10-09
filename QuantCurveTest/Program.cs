@@ -28,8 +28,8 @@ class Program
         contracts.Add("F30", 65858.82);
         contracts.Add("F31", 57725.48);
         contracts.Add("F32", 50559.37);
-        Dictionary<DateTime, CurvePillar> pillars = cbz.Prepare(new DateTime(2026, 9, 30), contracts);
-        Dictionary<int, double> dfs = cbz.Create(pillars);
+        var pillars = cbz.Prepare(new DateTime(2026, 9, 30), contracts);
+        var dfs = cbz.Create(pillars);
         Console.WriteLine("Test complete");
     }
 
