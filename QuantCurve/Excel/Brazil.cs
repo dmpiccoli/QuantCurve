@@ -17,7 +17,7 @@ public static class Brazil
     public static readonly DateTime ExcelEpoch = new(1899, 12, 30);
 
     [ExcelFunction(Description = "Brazil curve as known as pré", Category = "QuantCurve")]
-    public static object BrazilFixedCurve([ExcelArgument("Curve date")] DateTime date,
+    public static object QCBrazilFixedCurve([ExcelArgument("Curve date")] DateTime date,
         [ExcelArgument("Contract information (contract code and price in BRL)")] object[,] contracts)
     {
         if (date == ExcelEpoch)
@@ -39,7 +39,7 @@ public static class Brazil
                 if (string.IsNullOrEmpty(contracts[i, 0].ToString()))
                     return ExcelError.ExcelErrorValue;
                 else
-                    contractPrices.Add(contracts[i, 0].ToString(), (double)contracts[i, 1]);
+                    contractPrices.Add(contracts[i, 0].ToString().Replace("DI1", ""), (double)contracts[i, 1]);
                 
             }
 
