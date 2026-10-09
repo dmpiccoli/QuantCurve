@@ -13,7 +13,7 @@ public abstract class ChristianCalendar
     /// Returns the day-of-year of Easter Monday for the given year, using a
     /// precomputed table spanning 1901-2199.
     /// </summary>
-    public static int EasterMonday(int year)
+    protected static int EasterMonday(int year)
     {
         int a = year % 19;
         int b = year / 100;
