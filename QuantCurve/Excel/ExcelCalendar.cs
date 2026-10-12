@@ -1,5 +1,4 @@
 ﻿using ExcelDna.Integration;
-
 using QuantCurve.Core.Calendar;
 
 namespace QuantCurve.Excel;
@@ -18,7 +17,8 @@ public static class ExcelCalendar
 
     [ExcelFunction(Description = "Workday with QuantCurve calendar", Category = "QuantCurve")]
     public static object QCWorkday([ExcelArgument("Start date")] DateTime date,
-        [ExcelArgument("Number of business days")] int days,
+        [ExcelArgument("Number of business days")]
+        int days,
         [ExcelArgument("0 -> Brazil")] int calendar)
     {
         if (date == ExcelEpoch)
@@ -29,7 +29,7 @@ public static class ExcelCalendar
             if (days == 0)
                 return date;
 
-            ICountryCalendar calendarInstance = CalendarFactory.Create((CalendarType)calendar);
+            ICountryCalendar calendarInstance = CalendarFactory.Create((CalendarType)calendar, date);
             return calendarInstance.AddBusinessDays(date, days);
         }
         catch (Exception ex)
@@ -48,7 +48,7 @@ public static class ExcelCalendar
 
         try
         {
-            ICountryCalendar calendarInstance = CalendarFactory.Create((CalendarType)calendar);
+            ICountryCalendar calendarInstance = CalendarFactory.Create((CalendarType)calendar, start_date);
             return calendarInstance.CountBusinessDays(start_date, end_date);
         }
         catch (Exception ex)
