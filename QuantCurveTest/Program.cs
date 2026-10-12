@@ -1,4 +1,5 @@
 ﻿using QuantCurve.Core;
+using QuantCurve.Core.Calendar;
 using QuantCurve.Core.Curve;
 using QuantCurve.Core.Swap;
 
@@ -8,18 +9,6 @@ class Program
 {
     static void Main(string[] args)
     {
-        // Bootstraper b = new Bootstraper();
-        // DateTime date = DateTime.Today;
-        //
-        // Dictionary<string, double> tenors = new Dictionary<string, double>();
-        // tenors.Add("1Y", 0.05);
-        // tenors.Add("2Y", 0.06);
-        // tenors.Add("3Y", 0.07);
-        // tenors.Add("4Y", 0.08);
-        // tenors.Add("5Y", 0.09);
-        //
-        // b.Prepare(date, tenors);
-        
         var cbz = new Brazil();
         Dictionary<string, double> contracts = new Dictionary<string, double>();
         contracts.Add("F27", 96873.64);
@@ -32,6 +21,4 @@ class Program
         var dfs = cbz.Create(pillars);
         Console.WriteLine("Test complete");
     }
-
-    
 }
