@@ -1,4 +1,3 @@
-
 namespace QuantCurve.Core.Calendar;
 
 /// <summary>
@@ -8,7 +7,7 @@ namespace QuantCurve.Core.Calendar;
 /// implementation: only the surrounding structure was refactored so the logic
 /// can be tested and extended without Excel.
 /// </summary>
-public sealed class BrazilCalendar : ChristianCalendar, ICountryCalendar
+public class BrazilCalendarWithoutBlackConsciousnessDay : ChristianCalendar, ICountryCalendar
 {
     /// <summary>Excel date serial 0, used to detect an empty Excel date cell.</summary>
     public static readonly DateTime ExcelEpoch = new(1899, 12, 30);
@@ -30,6 +29,7 @@ public sealed class BrazilCalendar : ChristianCalendar, ICountryCalendar
             if (IsBusinessDay(date))
                 days -= step;
         }
+
         return date;
     }
 
@@ -53,7 +53,7 @@ public sealed class BrazilCalendar : ChristianCalendar, ICountryCalendar
         return step > 0 ? numDays : -numDays;
     }
 
-    private bool IsHoliday(DateTime date)
+    protected virtual bool IsHoliday(DateTime date)
     {
         DayOfWeek w = date.DayOfWeek;
         int d = date.Day;
@@ -63,30 +63,37 @@ public sealed class BrazilCalendar : ChristianCalendar, ICountryCalendar
         int emDoy = EasterMonday(y);
 
         return w == DayOfWeek.Saturday
-            || w == DayOfWeek.Sunday
-            // New Year's Day
-            || (d == 1 && m == 1)
-            // Tiradentes Day
-            || (d == 21 && m == 4)
-            // Labor Day
-            || (d == 1 && m == 5)
-            // Independence Day
-            || (d == 7 && m == 9)
-            // Nossa Sra. Aparecida Day
-            || (d == 12 && m == 10)
-            // All Souls Day
-            || (d == 2 && m == 11)
-            // Republic Day
-            || (d == 15 && m == 11)
-            // Black Consciousness Day
-            || (d == 20 && m == 11 && y >= 2024) //declared on 21/12/2023
-            // Christmas
-            || (d == 25 && m == 12)
-            // Passion of Christ
-            || dd == emDoy - 3
-            // Carnival
-            || (dd == emDoy - 49 || dd == emDoy - 48)
-            // Corpus Christi
-            || dd == emDoy + 59;
+               || w == DayOfWeek.Sunday
+               // New Year's Day
+               || (d == 1 && m == 1)
+               // Tiradentes Day
+               || (d == 21 && m == 4)
+               // Labor Day
+               || (d == 1 && m == 5)
+               // Independence Day
+               || (d == 7 && m == 9)
+               // Nossa Sra. Aparecida Day
+               || (d == 12 && m == 10)
+               // All Souls Day
+               || (d == 2 && m == 11)
+               // Republic Day
+               || (d == 15 && m == 11)
+               // Christmas
+               || (d == 25 && m == 12)
+               // Passion of Christ
+               || dd == emDoy - 3
+               // Carnival
+               || (dd == emDoy - 49 || dd == emDoy - 48)
+               // Corpus Christi
+               || dd == emDoy + 59;
+    }
+}
+
+public sealed class BrazilCalendar : BrazilCalendarWithoutBlackConsciousnessDay
+{
+    protected override bool IsHoliday(DateTime date)
+    {
+        return base.IsHoliday(date)
+               || (date.Day == 20 && date.Month == 11 && date.Year >= 2024);
     }
 }
