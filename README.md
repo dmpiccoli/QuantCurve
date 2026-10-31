@@ -50,13 +50,10 @@ QuantCurve/
 │   └── Excel/                     # Thin Excel add-in wrappers
 │       ├── ExcelCalendar.cs
 │       └── Brazil.cs
-├── QuantCurveTest/                # Integration tests and DI curve validation
-│   ├── Program.cs
-│   ├── QC Test.xlsx               # Sample workbook and validation dataset
-│   └── QuantCurveTest.csproj
-└── TempVerifyApp/                 # Swap bootstrapper theoretical verification
+└── QuantCurveTest/                # Integration tests and DI curve validation
     ├── Program.cs
-    └── TempVerifyApp.csproj
+    ├── QC Test.xlsx               # Sample workbook and validation dataset
+    └── QuantCurveTest.csproj
 ```
 
 The design follows a simple rule: **Core logic lives in `QuantCurve.Core` and is
